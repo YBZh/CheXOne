@@ -18,6 +18,7 @@ from swift.plugin.env import Env, envs
 from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugin.rm_plugin import DefaultRMPlugin
 from swift.utils import get_logger
+from radcliq import CompositeMetric
 
 logger = get_logger()
 """
@@ -35,6 +36,708 @@ TO CUSTOMIZE REWARD FUNCTION:
         --reward_funcs my_reward_function
 """
 
+
+import torch.nn as nn
+from bert_score import BERTScorer
+
+
+class BertScore(nn.Module):
+    def __init__(self,
+                 model_type='distilbert-base-uncased',
+                 num_layers=5,
+                 rescale_with_baseline=True,
+                 idf=False,
+                 ):
+        super(BertScore, self).__init__()
+
+        with torch.no_grad():
+            self.bert_scorer = BERTScorer(model_type=model_type,
+                                        num_layers=num_layers,
+                                        batch_size=64,
+                                        nthreads=4,
+                                        all_layers=False,
+                                        idf=idf,
+                                        device=None,
+                                        lang='en',
+                                        rescale_with_baseline=rescale_with_baseline,
+                                        baseline_path=None)
+
+    def forward(self, refs, hyps):
+        with torch.no_grad():
+            p, r, f = self.bert_scorer.score(
+            cands=hyps,
+            refs=refs,
+            verbose=False,
+            batch_size=64,
+            )
+            return torch.mean(f).item(), f.tolist()
+
+# bertscore_scorer = BertScore(model_type='distilbert-base-uncased', num_layers=5)
+# print("bertscore_scorer init")
+# print(list(bertscore_scorer.bert_scorer._model.named_parameters()))
+
+# class VQA_GenerationORM(ORM):
+
+#     def __init__(self):
+#         # from transformers.modeling_utils import set_zero3_state
+#         # with set_zero3_state():
+#         #     self.bertscore_scorer = BertScore(model_type='distilbert-base-uncased', num_layers=5)
+#         # for param in self.bertscore_scorer.bert_scorer._model.parameters():
+#         #     param.requires_grad = False
+
+#         self.radcliq_scorer = CompositeMetric()
+#         # 自动适配多卡环境，将bertscore_scorer移动到与ground_truth相同的device
+#         # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#         # self.bertscore_scorer = self.bertscore_scorer.to(device)
+#         # self.bertscore_scorer = BertScore(model_type='distilbert-base-uncased', num_layers=5)
+#         # print("bertscore_scorer init")
+#         # self.bertscore_scorer = bertscore_scorer
+#         # print(self.bertscore_scorer.bert_scorer._model.embeddings.word_embeddings.weight)
+#         # ipdb.set_trace()
+
+#     def extract_boxed_result(self, text):
+#         """
+#         提取 \boxed{} 前面的内容和 \boxed{} 内部的内容。
+#         例如: "reason\\boxed{answer}" -> ("reason", "answer")
+#         如果只有前半部分或者只有后半部分，则只取出对应部分，没有的部分用None占位
+
+#         注意：本函数假设text为原始字符串，包含转义字符（如\\n），
+#         并且\boxed{...}前面可能有多行内容。
+#         """
+#         # 先尝试匹配最后一个 \boxed{...}，并提取其前面的内容
+#         # 支持多行内容
+#         pattern = r'(?s)(.*?)\\boxed{([^}]*)}'
+#         match = re.search(pattern, text)
+#         if match:
+#             before_boxed = match.group(1)
+#             boxed_content = match.group(2)
+#             before_boxed = before_boxed.strip() if before_boxed and before_boxed.strip() else None
+#             boxed_content = boxed_content.strip() if boxed_content and boxed_content.strip() else None
+#             return before_boxed, boxed_content
+#         else:
+#             # 检查是否有 \boxed{...} 但前面没有内容
+#             pattern_boxed_only = r'\\boxed{([^}]*)}'
+#             match_boxed_only = re.search(pattern_boxed_only, text)
+#             if match_boxed_only:
+#                 boxed_content = match_boxed_only.group(1).strip() if match_boxed_only.group(1).strip() else None
+#                 return None, boxed_content
+#             # 检查是否有前半部分但没有 \boxed{}
+#             text_clean = text.strip() if text and text.strip() else None
+#             return text_clean, None
+
+#     def extract_label_option_multiple(self, label):
+#         """
+#         提取label中的所有选项，支持多选和多种格式。
+#         输入: label字符串，如 "A, B", "(A), (B)", "(A) XX, (B) XX", "(A). XX, (B). XX", "(A): XX, (B): XX", "A XX, B XX"
+#         输出: 选项列表，如 ["A"], ["A", "B"]
+#         """
+#         # 1. 先找所有 (A) 这种括号包裹的
+#         options = re.findall(r'\(([A-Za-z0-9])\)', label)
+#         if options:
+#             return options
+#         # 2. 找所有以 "A."、"A:"、"A："、"A "、"A,"、"A，" 开头的
+#         options = re.findall(r'\b([A-Za-z0-9])[\.:：,\s]', label)
+#         if options:
+#             # 去重并保持顺序
+#             seen = set()
+#             result = []
+#             for o in options:
+#                 if o not in seen:
+#                     seen.add(o)
+#                     result.append(o)
+#             return result
+#         # 3. 逗号/分号/空格分隔的单字母
+#         options = re.findall(r'\b([A-Za-z0-9])\b', label)
+#         # 过滤掉明显不是选项的情况（如数字等），但这里保守处理
+#         if options:
+#             # 去重并保持顺序
+#             seen = set()
+#             result = []
+#             for o in options:
+#                 if o not in seen:
+#                     seen.add(o)
+#                     result.append(o)
+#             return result
+#         # 4. 如果都没有，返回原始label作为单元素list
+#         return [label]
+
+#     def calculate_score(self, exact_option, exact_label_option):
+#         # 返回两个list的交集和并集
+#         intersection = list(set(exact_option) & set(exact_label_option))
+#         union = list(set(exact_option) | set(exact_label_option))
+#         return len(intersection) / len(union)
+    
+#     def bbox_iou(self, box1, box2, x1y1x2y2=True):
+#         if x1y1x2y2:
+#             b1_x1, b1_y1, b1_x2, b1_y2 = box1[:, 0], box1[:, 1], box1[:, 2], box1[:, 3]
+#             b2_x1, b2_y1, b2_x2, b2_y2 = box2[:, 0], box2[:, 1], box2[:, 2], box2[:, 3]
+#         else:
+#             b1_x1, b1_x2 = box1[:, 0] - box1[:, 2] / 2, box1[:, 0] + box1[:, 2] / 2
+#             b1_y1, b1_y2 = box1[:, 1] - box1[:, 3] / 2, box1[:, 1] + box1[:, 3] / 2
+#             b2_x1, b2_x2 = box2[:, 0] - box2[:, 2] / 2, box2[:, 0] + box2[:, 2] / 2
+#             b2_y1, b2_y2 = box2[:, 1] - box2[:, 3] / 2, box2[:, 1] + box2[:, 3] / 2
+
+#         inter_rect_x1 = torch.max(b1_x1, b2_x1)
+#         inter_rect_y1 = torch.max(b1_y1, b2_y1)
+#         inter_rect_x2 = torch.min(b1_x2, b2_x2)
+#         inter_rect_y2 = torch.min(b1_y2, b2_y2)
+
+#         inter_area = torch.clamp(inter_rect_x2 - inter_rect_x1, 0) * torch.clamp(inter_rect_y2 - inter_rect_y1, 0)
+
+#         b1_area = (b1_x2 - b1_x1) * (b1_y2 - b1_y1)
+#         b2_area = (b2_x2 - b2_x1) * (b2_y2 - b2_y1)
+
+#         return inter_area / (b1_area + b2_area - inter_area + 1e-16)
+
+#     def calculate_iou(self, pred, label):
+#         if "no" in label.lower() and "detected" in label.lower():
+#             if pred.lower() == label.lower():
+#                 return 0.3
+#             elif (
+#                 "detected" in pred.lower() and
+#                 "no" in pred.lower() and
+#                 "<|box|>" not in pred and
+#                 "<|/box|>" not in pred
+#             ):
+#                 # import ipdb; ipdb.set_trace()
+#                 return 0.2
+#             else:
+#                 return 0.0
+
+#         match_pred = re.search(r'\\boxed\{([^\}]*)\}', pred)
+#         pred = match_pred.group(1).strip() if match_pred else pred.strip()
+#         match_sol = re.search(r'\\boxed\{([^\}]*)\}', label)
+#         label = match_sol.group(1).strip() if match_sol else label.strip()
+#         try:
+#             # Extract box coordinates from label string like '<|ref|>...<|/ref|><|box|>(26,42),(78,79)<|/box|>'
+#             # 提取 reference 中的名字和 box
+#             reference_refs = [ref.lower() for ref in re.findall(r'<\|ref\|\>(.*?)<\|/ref\|>', label)]
+#             reference_boxes = re.findall(r'<\|box\|\>(.*?)<\|/box\|>', label)
+#             reference_pairs = list(zip(reference_refs, reference_boxes))
+
+#             # 提取 candidate 中的名字和 box
+#             candidate_refs = [ref.lower() for ref in re.findall(r'<\|ref\|\>(.*?)<\|/ref\|>', pred)]
+#             candidate_boxes = re.findall(r'<\|box\|\>(.*?)<\|/box\|>', pred)
+#             candidate_pairs = list(zip(candidate_refs, candidate_boxes))
+
+#             # 跳过没有reference_box的情况
+#             if len(reference_pairs) == 0:
+#                 return 0.0
+#             if len(candidate_pairs) == 0:  # if there is no box in the prediction, the iou is 0
+#                 candidate_box = ['(0,0),(0,0)']
+#                 iou = 0.0
+#             else:
+
+#                 # 取出 reference_pairs[0][0] 的名字
+#                 ref_name = reference_pairs[0][0]
+#                 # 在 candidate_pairs 中查找是否有匹配的名字
+#                 matched_cand = None
+#                 for cand in candidate_pairs:
+#                     if cand[0] == ref_name:
+#                         matched_cand = cand
+#                         break
+#                 if matched_cand is not None:
+#                     # 解析坐标
+#                     ref_coords = [int(cord) for cord in reference_pairs[0][1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+#                     cand_coords = [int(cord) for cord in matched_cand[1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+#                 else:
+#                     # 没有找到匹配的名字，使用第一个 candidate_pair
+#                     ref_coords = [int(cord) for cord in reference_pairs[0][1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+#                     cand_coords = [int(cord) for cord in candidate_pairs[0][1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+#                 # 跳过坐标数不对的情况
+#                 if len(ref_coords) != 4 or len(cand_coords) != 4:
+#                     return 0.0
+#                 reference_box_tensor = torch.tensor([ref_coords])
+#                 candidate_box_tensor = torch.tensor([cand_coords])
+#                 iou = self.bbox_iou(reference_box_tensor, candidate_box_tensor).item()
+#                 # ipdb.set_trace()
+#             return iou
+#         except Exception as e:
+#             # 跳过解析失败的样本
+#             return 0.0
+
+
+#     def __call__(self, infer_requests: List[Union['InferRequest', Dict]],
+#                  **kwargs) -> List[float]:
+#         # ipdb.set_trace()
+#         rewards = []
+#         # for idx, req in enumerate(infer_requests):
+#         #     print(f'infer_requests[{idx}]:', req)
+#         # for i, uid in enumerate(kwargs['unique_id']):
+#         #     print(f'kwargs unique_id[{i}]:', uid)
+#         # print('--------------------------------')
+#         ground_truths = kwargs['solution']
+#         task_names = kwargs['task_name']
+#         predictions = infer_requests
+#         for prediction, ground_truth, task_name in zip(predictions, ground_truths, task_names):
+#             predicted_reason, prediction_boxed = self.extract_boxed_result(prediction)
+
+#             if task_name == 'Impression Generation' or task_name == 'Findings Generation' or task_name == 'Findings Summarization':
+#                 # print("bertscore_scorer forward")
+#                 # print(list(self.bertscore_scorer.bert_scorer._model.named_parameters()))
+#                 # ipdb.set_trace()
+#                 # print(f"Current device: {torch.cuda.current_device()}")
+#                 # import ipdb; ipdb.set_trace()
+#                 if prediction_boxed is not None and predicted_reason is not None:
+#                     reward = self.radcliq_scorer.predict(refs=[ground_truth], hyps=[prediction_boxed])[0]
+#                     reward_reason = self.radcliq_scorer.predict_rouge1(refs=[ground_truth], hyps=[predicted_reason])[0]
+#                     reward_reason = 0.2 if reward_reason > 0.2 else reward_reason
+#                     reward = reward * 0.8 + reward_reason
+#                 elif prediction_boxed is not None:
+#                     reward = self.radcliq_scorer.predict(refs=[ground_truth], hyps=[prediction_boxed])[0]
+#                     reward = reward * 0.8
+#                 elif predicted_reason is not None:
+#                     reward_reason = self.radcliq_scorer.predict_rouge1(refs=[ground_truth], hyps=[predicted_reason])[0]
+#                     reward_reason = 0.2 if reward_reason > 0.2 else reward_reason
+#                     reward = reward_reason
+#                 else:
+#                     reward = 0.0
+
+#             elif task_name == 'Closed-Ended VQA' or task_name == 'Close-Ended VQA' or task_name == 'Image Classification' or task_name == 'Temporal Image Classification' or task_name == 'View Classification':
+#                 # ipdb.set_trace()
+#                 prediction_option = self.extract_label_option_multiple(prediction_boxed)
+#                 ground_truth_option = self.extract_label_option_multiple(ground_truth)
+#                 reward = self.calculate_score(prediction_option, ground_truth_option)
+#             elif task_name == 'Abnormality Grounding' or task_name == 'Chest Tube Segmentation' or task_name == 'Phrase Grounding' or task_name == 'Pneumothorax Segmentation':
+#                 reward = self.calculate_iou(prediction_boxed, ground_truth)
+#             else:
+#                 raise ValueError(f'Unsupported task name: {task_name}')
+#             rewards.append(reward)
+#         return rewards
+# orms['external_vqa_generation_reward'] = VQA_GenerationORM
+
+
+class VQA_ORM(ORM):
+
+    def __init__(self):
+
+
+        self.temp_list = []
+        self.max_len = 1000
+
+    def extract_boxed_result(self, text):
+        """
+        提取 \boxed{} 前面的内容和 \boxed{} 内部的内容。
+        例如: "reason\\boxed{answer}" -> ("reason", "answer")
+        如果只有前半部分或者只有后半部分，则只取出对应部分，没有的部分用None占位
+
+        注意：本函数假设text为原始字符串，包含转义字符（如\\n），
+        并且\boxed{...}前面可能有多行内容。
+        """
+        # 先尝试匹配最后一个 \boxed{...}，并提取其前面的内容
+        # 支持多行内容
+        pattern = r'(?s)(.*?)\\boxed{([^}]*)}'
+        match = re.search(pattern, text)
+        if match:
+            before_boxed = match.group(1)
+            boxed_content = match.group(2)
+            before_boxed = before_boxed.strip() if before_boxed and before_boxed.strip() else None
+            boxed_content = boxed_content.strip() if boxed_content and boxed_content.strip() else None
+            return before_boxed, boxed_content
+        else:
+            # 检查是否有 \boxed{...} 但前面没有内容
+            pattern_boxed_only = r'\\boxed{([^}]*)}'
+            match_boxed_only = re.search(pattern_boxed_only, text)
+            if match_boxed_only:
+                boxed_content = match_boxed_only.group(1).strip() if match_boxed_only.group(1).strip() else None
+                return None, boxed_content
+            # 检查是否有前半部分但没有 \boxed{}
+            text_clean = text.strip() if text and text.strip() else None
+            return text_clean, None
+
+    def extract_label_option_multiple(self, label):
+        """
+        提取label中的所有选项，支持多选和多种格式。
+        输入: label字符串，如 "A, B", "(A), (B)", "(A) XX, (B) XX", "(A). XX, (B). XX", "(A): XX, (B): XX", "A XX, B XX"
+        输出: 选项列表，如 ["A"], ["A", "B"]
+        """
+        # 1. 先找所有 (A) 这种括号包裹的
+        options = re.findall(r'\(([A-Za-z0-9])\)', label)
+        if options:
+            return options
+        # 2. 找所有以 "A."、"A:"、"A："、"A "、"A,"、"A，" 开头的
+        options = re.findall(r'\b([A-Za-z0-9])[\.:：,\s]', label)
+        if options:
+            # 去重并保持顺序
+            seen = set()
+            result = []
+            for o in options:
+                if o not in seen:
+                    seen.add(o)
+                    result.append(o)
+            return result
+        # 3. 逗号/分号/空格分隔的单字母
+        options = re.findall(r'\b([A-Za-z0-9])\b', label)
+        # 过滤掉明显不是选项的情况（如数字等），但这里保守处理
+        if options:
+            # 去重并保持顺序
+            seen = set()
+            result = []
+            for o in options:
+                if o not in seen:
+                    seen.add(o)
+                    result.append(o)
+            return result
+        # 4. 如果都没有，返回原始label作为单元素list
+        return [label]
+
+    def calculate_score(self, exact_option, exact_label_option):
+        # 返回两个list的交集和并集
+        intersection = list(set(exact_option) & set(exact_label_option))
+        union = list(set(exact_option) | set(exact_label_option))
+        return len(intersection) / len(union)
+    
+
+
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]],
+                 **kwargs) -> List[float]:
+        # ipdb.set_trace()
+        rewards = []
+        # for idx, req in enumerate(infer_requests):
+        #     print(f'infer_requests[{idx}]:', req)
+        # for i, uid in enumerate(kwargs['unique_id']):
+        #     print(f'kwargs unique_id[{i}]:', uid)
+        # print('--------------------------------')
+        ground_truths = kwargs['solution']
+        task_names = kwargs['task_name']
+        predictions = infer_requests
+        for prediction, ground_truth, task_name in zip(predictions, ground_truths, task_names):
+            predicted_reason, prediction_boxed = self.extract_boxed_result(prediction)
+
+            if 'Impression Generation' in task_name or 'Findings Generation' in task_name:
+                if len(self.temp_list) > 0:
+                    reward = sum(self.temp_list) / len(self.temp_list)
+                else:
+                    reward = 0.0
+
+            elif task_name == 'Closed-Ended VQA' or task_name == 'Close-Ended VQA' or task_name == 'Image Classification' or task_name == 'Temporal Image Classification' or task_name == 'View Classification' or task_name == 'Disease Classification' or task_name == 'Temporal Disease Change Detection':
+                # ipdb.set_trace()
+                if prediction_boxed is not None:
+                    prediction_option = self.extract_label_option_multiple(prediction_boxed)
+                    ground_truth_option = self.extract_label_option_multiple(ground_truth)
+                    reward = self.calculate_score(prediction_option, ground_truth_option)
+                    self.temp_list.append(reward)
+                    if len(self.temp_list) > self.max_len:
+                        self.temp_list.pop(0)
+                else:
+                    reward = 0.0
+            elif task_name == 'Abnormality Grounding' or task_name == 'Chest Tube Segmentation' or task_name == 'Phrase Grounding' or task_name == 'Pneumothorax Segmentation':
+                if len(self.temp_list) > 0:
+                    reward = sum(self.temp_list) / len(self.temp_list)
+                else:
+                    reward = 0.0
+            else:
+                raise ValueError(f'Unsupported task name: {task_name}')
+            rewards.append(reward)
+        return rewards
+orms['external_vqa_orm'] = VQA_ORM
+
+class Iou_ORM(ORM):
+
+    def __init__(self):
+        self.temp_list = []
+        self.max_len = 1000
+
+    def extract_boxed_result(self, text):
+        """
+        提取 \boxed{} 前面的内容和 \boxed{} 内部的内容。
+        例如: "reason\\boxed{answer}" -> ("reason", "answer")
+        如果只有前半部分或者只有后半部分，则只取出对应部分，没有的部分用None占位
+
+        注意：本函数假设text为原始字符串，包含转义字符（如\\n），
+        并且\boxed{...}前面可能有多行内容。
+        """
+        # 先尝试匹配最后一个 \boxed{...}，并提取其前面的内容
+        # 支持多行内容
+        pattern = r'(?s)(.*?)\\boxed{([^}]*)}'
+        match = re.search(pattern, text)
+        if match:
+            before_boxed = match.group(1)
+            boxed_content = match.group(2)
+            before_boxed = before_boxed.strip() if before_boxed and before_boxed.strip() else None
+            boxed_content = boxed_content.strip() if boxed_content and boxed_content.strip() else None
+            return before_boxed, boxed_content
+        else:
+            # 检查是否有 \boxed{...} 但前面没有内容
+            pattern_boxed_only = r'\\boxed{([^}]*)}'
+            match_boxed_only = re.search(pattern_boxed_only, text)
+            if match_boxed_only:
+                boxed_content = match_boxed_only.group(1).strip() if match_boxed_only.group(1).strip() else None
+                return None, boxed_content
+            # 检查是否有前半部分但没有 \boxed{}
+            text_clean = text.strip() if text and text.strip() else None
+            return text_clean, None
+
+    def bbox_iou(self, box1, box2, x1y1x2y2=True):
+        if x1y1x2y2:
+            b1_x1, b1_y1, b1_x2, b1_y2 = box1[:, 0], box1[:, 1], box1[:, 2], box1[:, 3]
+            b2_x1, b2_y1, b2_x2, b2_y2 = box2[:, 0], box2[:, 1], box2[:, 2], box2[:, 3]
+        else:
+            b1_x1, b1_x2 = box1[:, 0] - box1[:, 2] / 2, box1[:, 0] + box1[:, 2] / 2
+            b1_y1, b1_y2 = box1[:, 1] - box1[:, 3] / 2, box1[:, 1] + box1[:, 3] / 2
+            b2_x1, b2_x2 = box2[:, 0] - box2[:, 2] / 2, box2[:, 0] + box2[:, 2] / 2
+            b2_y1, b2_y2 = box2[:, 1] - box2[:, 3] / 2, box2[:, 1] + box2[:, 3] / 2
+
+        inter_rect_x1 = torch.max(b1_x1, b2_x1)
+        inter_rect_y1 = torch.max(b1_y1, b2_y1)
+        inter_rect_x2 = torch.min(b1_x2, b2_x2)
+        inter_rect_y2 = torch.min(b1_y2, b2_y2)
+
+        inter_area = torch.clamp(inter_rect_x2 - inter_rect_x1, 0) * torch.clamp(inter_rect_y2 - inter_rect_y1, 0)
+
+        b1_area = (b1_x2 - b1_x1) * (b1_y2 - b1_y1)
+        b2_area = (b2_x2 - b2_x1) * (b2_y2 - b2_y1)
+
+        return inter_area / (b1_area + b2_area - inter_area + 1e-16)
+
+    def calculate_iou(self, pred, label):
+        # if "no" in label.lower() and "detected" in label.lower():
+        #     if pred.lower() == label.lower():
+        #         return 0.3
+        #     elif (
+        #         "detected" in pred.lower() and
+        #         "no" in pred.lower() and
+        #         "<|box|>" not in pred and
+        #         "<|/box|>" not in pred
+        #     ):
+        #         # import ipdb; ipdb.set_trace()
+        #         return 0.2
+        #     else:
+        #         return 0.0
+
+        match_pred = re.search(r'\\boxed\{([^\}]*)\}', pred)
+        pred = match_pred.group(1).strip() if match_pred else pred.strip()
+        match_sol = re.search(r'\\boxed\{([^\}]*)\}', label)
+        label = match_sol.group(1).strip() if match_sol else label.strip()
+        try:
+            # Extract box coordinates from label string like '<|ref|>...<|/ref|><|box|>(26,42),(78,79)<|/box|>'
+            # 提取 reference 中的名字和 box
+            # 为啥label可以提取到box, 但pred提取不到？
+            # 这通常是因为pred字符串中没包含匹配的 <|box|>...</|box|> 模式
+            # 你可以单独打印调试 re.findall 的结果
+            reference_refs = [ref.lower() for ref in re.findall(r'<\|ref\|\>(.*?)<\|/ref\|>', label)]
+            reference_boxes = re.findall(r'<\|box\|\>(.*?)<\|/box\|>', label)
+            reference_pairs = list(zip(reference_refs, reference_boxes))
+            # candidate里如果没box，re.findall会返回空list
+            candidate_refs = [ref.lower() for ref in re.findall(r'<\|ref\|\>(.*?)<\|/ref\|>', pred)]
+            candidate_boxes = re.findall(r'<\|box\|\>(.*?)<\|/box\|>', pred)
+            candidate_pairs = list(zip(candidate_refs, candidate_boxes))
+            # import ipdb; ipdb.set_trace()
+            # 跳过没有reference_box的情况
+            if len(reference_pairs) == 0:
+                return 0.0
+            if len(candidate_pairs) == 0:  # if there is no box in the prediction, the iou is 0
+                candidate_box = ['(0,0),(0,0)']
+                iou = 0.0
+            else:
+
+                # 取出 reference_pairs[0][0] 的名字
+                ref_name = reference_pairs[0][0]
+                # 在 candidate_pairs 中查找是否有匹配的名字
+                can_name = candidate_pairs[0][0]
+                if ref_name == can_name:
+                    ref_rate = 1.0
+                else:
+                    ref_rate = 0.95
+                # matched_cand = None
+                # for cand in candidate_pairs:
+                #     if cand[0] == ref_name:
+                #         matched_cand = cand
+                #         break
+                # if matched_cand is not None:
+                #     ref_rate = 1.0
+                #     # 解析坐标
+                #     ref_coords = [int(cord) for cord in reference_pairs[0][1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+                #     cand_coords = [int(cord) for cord in matched_cand[1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+                # else:
+                #     # 没有找到匹配的名字，使用第一个 candidate_pair
+                #     ref_rate = 0.95
+                ref_coords = [int(cord) for cord in reference_pairs[0][1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+                cand_coords = [int(cord) for cord in candidate_pairs[0][1].replace("(", "").replace(")", "").split(",") if cord.strip() != ""]
+                # 跳过坐标数不对的情况
+                if len(ref_coords) != 4 or len(cand_coords) != 4:
+                    return 0.0
+                reference_box_tensor = torch.tensor([ref_coords])
+                candidate_box_tensor = torch.tensor([cand_coords])
+                iou = self.bbox_iou(reference_box_tensor, candidate_box_tensor).item()
+                iou = iou * ref_rate
+                # ipdb.set_trace()
+            return iou
+        except Exception as e:
+            # 跳过解析失败的样本
+            return 0.0
+
+
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]],
+                 **kwargs) -> List[float]:
+        # ipdb.set_trace()
+        rewards = []
+        # for idx, req in enumerate(infer_requests):
+        #     print(f'infer_requests[{idx}]:', req)
+        # for i, uid in enumerate(kwargs['unique_id']):
+        #     print(f'kwargs unique_id[{i}]:', uid)
+        # print('--------------------------------')
+        ground_truths = kwargs['solution']
+        task_names = kwargs['task_name']
+        predictions = infer_requests
+        for prediction, ground_truth, task_name in zip(predictions, ground_truths, task_names):
+            predicted_reason, prediction_boxed = self.extract_boxed_result(prediction)
+
+            if 'Impression Generation' in task_name or 'Findings Generation' in task_name:
+                if len(self.temp_list) > 0:
+                    reward = sum(self.temp_list) / len(self.temp_list)
+                else:
+                    reward = 0.0
+
+            elif task_name == 'Closed-Ended VQA' or task_name == 'Close-Ended VQA' or task_name == 'Image Classification' or task_name == 'Temporal Image Classification' or task_name == 'View Classification' or task_name == 'Disease Classification' or task_name == 'Temporal Disease Change Detection':
+                # ipdb.set_trace()
+                if len(self.temp_list) > 0:
+                    reward = sum(self.temp_list) / len(self.temp_list)
+                else:
+                    reward = 0.0
+            elif task_name == 'Abnormality Grounding' or task_name == 'Chest Tube Segmentation' or task_name == 'Phrase Grounding' or task_name == 'Pneumothorax Segmentation':
+                if prediction_boxed is not None:
+                    reward = self.calculate_iou(prediction_boxed, ground_truth)
+                    self.temp_list.append(reward)
+                    if len(self.temp_list) > self.max_len:
+                        self.temp_list.pop(0)
+                else:
+                    reward = 0.0
+            else:
+                raise ValueError(f'Unsupported task name: {task_name}')
+            rewards.append(reward)
+        return rewards
+orms['external_iou_reward'] = Iou_ORM
+
+
+class GenerationWithReasonORM(ORM):
+
+    def __init__(self):
+
+        self.radcliq_scorer = CompositeMetric()
+        self.temp_list = []
+        self.max_len = 1000
+
+    def extract_boxed_result(self, text):
+        """
+        提取 \boxed{} 前面的内容和 \boxed{} 内部的内容。
+        例如: "reason\\boxed{answer}" -> ("reason", "answer")
+        如果只有前半部分或者只有后半部分，则只取出对应部分，没有的部分用None占位
+
+        注意：本函数假设text为原始字符串，包含转义字符（如\\n），
+        并且\boxed{...}前面可能有多行内容。
+        """
+        # 先尝试匹配最后一个 \boxed{...}，并提取其前面的内容
+        # 支持多行内容
+        pattern = r'(?s)(.*?)\\boxed{([^}]*)}'
+        match = re.search(pattern, text)
+        if match:
+            before_boxed = match.group(1)
+            boxed_content = match.group(2)
+            before_boxed = before_boxed.strip() if before_boxed and before_boxed.strip() else None
+            boxed_content = boxed_content.strip() if boxed_content and boxed_content.strip() else None
+            return before_boxed, boxed_content
+        else:
+            # 检查是否有 \boxed{...} 但前面没有内容
+            pattern_boxed_only = r'\\boxed{([^}]*)}'
+            match_boxed_only = re.search(pattern_boxed_only, text)
+            if match_boxed_only:
+                boxed_content = match_boxed_only.group(1).strip() if match_boxed_only.group(1).strip() else None
+                return None, boxed_content
+            # 检查是否有前半部分但没有 \boxed{}
+            text_clean = text.strip() if text and text.strip() else None
+            return text_clean, None
+
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]],
+                 **kwargs) -> List[float]:
+        # ipdb.set_trace()
+        rewards = []
+        # for idx, req in enumerate(infer_requests):
+        #     print(f'infer_requests[{idx}]:', req)
+        # for i, uid in enumerate(kwargs['unique_id']):
+        #     print(f'kwargs unique_id[{i}]:', uid)
+        # print('--------------------------------')
+        ground_truths = kwargs['solution']
+        task_names = kwargs['task_name']
+        predictions = infer_requests
+        for prediction, ground_truth, task_name in zip(predictions, ground_truths, task_names):
+            predicted_reason, prediction_boxed = self.extract_boxed_result(prediction)
+
+            if 'Impression Generation' in task_name or 'Findings Generation' in task_name:
+                # print("bertscore_scorer forward")
+                # print(list(self.bertscore_scorer.bert_scorer._model.named_parameters()))
+                # ipdb.set_trace()
+                # print(f"Current device: {torch.cuda.current_device()}")
+                # import ipdb; ipdb.set_trace()
+                if prediction_boxed is not None and predicted_reason is not None:
+                    reward = self.radcliq_scorer.predict(refs=[ground_truth], hyps=[prediction_boxed])[0]
+                    # reward_reason = self.radcliq_scorer.predict_rouge1(refs=[ground_truth], hyps=[predicted_reason])[0]
+                    # reward_reason = 0.05 if reward_reason > 0.05 else reward_reason
+                    # reward = reward * 0.95 + reward_reason
+                elif prediction_boxed is not None:
+                    reward = self.radcliq_scorer.predict(refs=[ground_truth], hyps=[prediction_boxed])[0]
+                    reward = reward * 0.95
+                # elif predicted_reason is not None:
+                #     reward_reason = self.radcliq_scorer.predict_rouge1(refs=[ground_truth], hyps=[predicted_reason])[0]
+                #     reward_reason = 0.05 if reward_reason > 0.05 else reward_reason
+                #     reward = reward_reason
+                else:
+                    reward = 0.0
+                self.temp_list.append(reward)
+                if len(self.temp_list) > self.max_len:
+                    self.temp_list.pop(0)
+            
+            elif task_name == 'Closed-Ended VQA' or task_name == 'Close-Ended VQA' or task_name == 'Image Classification' or task_name == 'Temporal Image Classification' or task_name == 'View Classification' or task_name == 'Disease Classification' or task_name == 'Temporal Disease Change Detection':
+                # ipdb.set_trace()
+                if len(self.temp_list) > 0:
+                    reward = sum(self.temp_list) / len(self.temp_list)
+                else:
+                    reward = 0.0
+            elif task_name == 'Abnormality Grounding' or task_name == 'Chest Tube Segmentation' or task_name == 'Phrase Grounding' or task_name == 'Pneumothorax Segmentation':
+                if len(self.temp_list) > 0:
+                    reward = sum(self.temp_list) / len(self.temp_list)
+                else:
+                    reward = 0.0
+            else:
+                raise ValueError(f'Unsupported task name: {task_name}')
+            rewards.append(reward)
+        return rewards
+orms['external_generation_with_reason_reward'] = GenerationWithReasonORM
+
+class Format_boxed(ORM):
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        """
+        Reward function that checks if the completion has a specific format:
+        - \boxed{} must not be empty
+        - There must be non-whitespace characters before \boxed{}
+        - There must be exactly one \boxed{} occurrence
+        - The part before \boxed{} must not be empty or only whitespace
+        """
+        scores = []
+        # Pattern: non-whitespace before \boxed{...} and non-empty inside
+        pattern = r'(.*?)\\boxed\{([^\}]*)\}'
+        boxed_pattern = r'\\boxed\{([^\}]*)\}'
+        for content in completions:
+            # Count all \boxed{} occurrences
+            boxed_matches = re.findall(boxed_pattern, content, re.DOTALL)
+            if len(boxed_matches) != 1:
+                scores.append(0.0)
+                continue
+            # Now check the format and non-empty inside
+            match = re.search(pattern, content, re.DOTALL)
+            if match:
+                before_boxed = match.group(1)
+                inside_boxed = match.group(2)
+                if before_boxed is not None and before_boxed.strip() != "" and inside_boxed.strip() != "":
+                    scores.append(1.0)
+                else:
+                    scores.append(0.0)
+            else:
+                scores.append(0.0)
+        return scores
+
+orms['external_format_reward_boxed'] = Format_boxed
 
 # For additional reward functions, refer to swift/plugin/orm.py.
 class CountdownORM(ORM):
