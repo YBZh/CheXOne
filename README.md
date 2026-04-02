@@ -24,7 +24,7 @@
 
 
 <p align="center">
-    <a href="https://arxiv.org/abs/2408.05517">Paper</a> &nbsp ｜ &nbsp <a href="https://huggingface.co/StanfordAIMI/CheXOne">Hugging Face</a> &nbsp ｜ &nbsp <a href="https://rexrank.ai/">ReXRank Leaderboard</a>
+    <a href="https://arxiv.org/pdf/2604.00493v1">Paper</a> &nbsp ｜ &nbsp <a href="https://huggingface.co/StanfordAIMI/CheXOne">Hugging Face</a> &nbsp ｜ &nbsp <a href="https://rexrank.ai/">ReXRank Leaderboard</a>
 </p>
 
 ## 📖 Table of Contents
@@ -133,7 +133,7 @@ messages = [
         "content": [
             {
                 "type": "image",
-                "image": "https://github.com/YBZh/CheXOne/blob/main/asset/cxr.jpg",
+                "image": "https://raw.githubusercontent.com/YBZh/CheXOne/main/asset/cxr.jpg",
             },
             {
                 "type": "text",
@@ -150,7 +150,7 @@ messages = [
 #         "content": [
 #             {
 #                 "type": "image",
-#                 "image": "https://github.com/YBZh/CheXOne/blob/main/asset/cxr.jpg",
+#                 "image": "https://raw.githubusercontent.com/YBZh/CheXOne/main/asset/cxr.jpg",
 #             },
 #             {
 #                 "type": "text",
@@ -232,7 +232,7 @@ See: [`examples/train/chexone/prepare_testing/3_inference_code/CheXOne.sh`](exam
 
 See: [`examples/train/chexone/prepare_testing/3_inference_code/OtherModels`](examples/train/chexone/prepare_testing/3_inference_code/OtherModels)
 
-## 🧪 Reader Study
+## 👩‍⚕️ Reader Study
 See: [`examples/train/chexone/Reader-Study`](examples/train/chexone/Reader-Study)
 
 
@@ -242,13 +242,13 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 
 ## 📎 Citation
 
-<!-- ```bibtex
-@misc{zhao2024swiftascalablelightweightinfrastructure,
-      title={SWIFT:A Scalable lightWeight Infrastructure for Fine-Tuning},
-      author={Yuze Zhao and Jintao Huang and Jinghan Hu and Xingjun Wang and Yunlin Mao and Daoze Zhang and Zeyinzi Jiang and Zhikai Wu and Baole Ai and Ang Wang and Wenmeng Zhou and Yingda Chen},
-      year={2024},
-      eprint={2408.05517},
+```bibtex
+@misc{zhang2026reasoningenabledvisionlanguagefoundationmodel,
+      title={A Reasoning-Enabled Vision-Language Foundation Model for Chest X-ray Interpretation}, 
+      author={Yabin Zhang and Chong Wang and Yunhe Gao and Jiaming Liu and Maya Varma and Justin Xu and Sophie Ostmeier and Jin Long and Sergios Gatidis and Seena Dehkharghani and Arne Michalson and Eun Kyoung Hong and Christian Bluethgen and Haiwei Henry Guo and Alexander Victor Ortiz and Stephan Altmayer and Sandhya Bodapati and Joseph David Janizek and Ken Chang and Jean-Benoit Delbrouck and Akshay S. Chaudhari and Curtis P. Langlotz},
+      year={2026},
+      eprint={2604.00493},
       archivePrefix={arXiv},
-      primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2408.05517},
-} -->
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2604.00493}, 
+}
