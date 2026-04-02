@@ -1,4 +1,4 @@
-# CheXOne: A Reasoning-aware Vision–Language Foundation Model for Chest X-ray Interpretation
+# CheXOne: A Reasoning-Enabled Vision–Language Foundation Model for Chest X-ray Interpretation
 
 <p align="center">
     <br>
