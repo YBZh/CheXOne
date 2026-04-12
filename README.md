@@ -11,6 +11,8 @@
         <a href="README_CN.md">中文</a> &nbsp ｜ &nbsp English &nbsp
 </p> -->
 
+
+<p align="center">
 <p align="center">
 <img src="https://img.shields.io/badge/python-3.10-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A52.7-orange.svg">
@@ -26,6 +28,9 @@
 <p align="center">
     <a href="https://arxiv.org/pdf/2604.00493v1">Paper</a> &nbsp ｜ &nbsp <a href="https://huggingface.co/StanfordAIMI/CheXOne">Hugging Face</a> &nbsp ｜ &nbsp <a href="https://rexrank.ai/">ReXRank Leaderboard</a>
 </p>
+<p align="center">
+You can definately retrain the model and reproduce our results following the guidelines! 
+<p>
 
 ## 📖 Table of Contents
 - [Introduction](#-introduction)
@@ -46,9 +51,9 @@
 CheXOne is a reasoning-aware vision-language model for chest X-ray interpretation.
 
 ✨ **Key Features:**
-- **Reasoning Capability:** Generates explicit reasoning traces alongside final answers.
-- **Multi-Task Support:** Handles Visual Question Answering (VQA), report generation, and visual grounding tasks.
-- **Resident-Level Reporting:** Achieves report quality that matches or surpasses resident-written reports in 50+% of studied cases.
+- **Reasoning Capability:** Generating explicit reasoning traces alongside final answers.
+- **Multi-Task Support:** Handling Visual Question Answering (VQA), report generation, and visual grounding tasks.
+- **Resident-Level Reporting:** Outputing report quality that matches or surpasses resident-written reports in 50+% of studied cases.
 - **Two Inference Modes:**
   - **Reasoning Mode:** Higher performance with explicit reasoning traces.
   - **Instruct Mode:** Faster inference without reasoning traces.
@@ -188,12 +193,12 @@ print(output_text)
 ```
 
 ## 📂 Data
-### CheXinstruct-v2 and CheXReason (<span style="color:red">Under preparation and policy checking</span>)
+### CheXinstruct-v2 and CheXReason
 
-- **Images**: Please download the CXR images following the instructions in the corresponding datasets: [📂 data.md](.data.md)
+- **Images**: Please download the CXR images following the instructions of the used datasets (cf. paper).
 - **Texts**: 
-  - [📊 CheXinstruct-v2](链接A)
-  - [🧠 CheXReason](链接B)
+  - [📊 CheXinstruct-v2](https://drive.google.com/drive/folders/1VhL5nqPq5KfzGBecTbgSJs4MvwzTiy7E?usp=sharing)
+  - [🧠 CheXReason](https://drive.google.com/drive/folders/1WKvaO4UTztiltfppHisTIVFWDj_oSaGv?usp=sharing)
 
 ## 🏋️ Train
 
@@ -205,11 +210,11 @@ This step performs supervised fine-tuning using curated CheXinstruct-v2 and CheX
 
 ---
 
-### 2. Low Variance Filtering for GRPO (<span style="color:red">Under preparation</span>)
+### 2. Low Variance Filtering for GRPO
 
 See: [`examples/train/chexone/grpo_prepare`](examples/train/chexone/grpo_prepare)
 
-To ensure strong learning signals for GRPO, we filter out low-variance samples. For each candidate, several stochastic model runs are used to estimate reward variance, and only the high informative samples in each category—those with highest reward variance—are selected. This strategy improves GRPO effectiveness and efficiency.
+To ensure strong learning signals for GRPO, we filter out low-variance samples. For each candidate, eight stochastic model runs are used to estimate reward variance, and only the high informative samples in each category—those with highest reward variance—are selected. This strategy improves GRPO effectiveness and efficiency.
 
 ---
 
