@@ -1,3 +1,5 @@
+
+
 # CheXOne: A Reasoning-Enabled Vision–Language Foundation Model for Chest X-ray Interpretation
 
 <p align="center">
@@ -68,7 +70,7 @@ CheXOne is a reasoning-aware vision-language model for chest X-ray interpretatio
 
 ## 🛠️ Installation
 ```shell
-https://github.com/YBZh/CheXOne.git
+git clone https://github.com/YBZh/CheXOne.git
 cd CheXOne
 pip install -e .
 ```
@@ -197,7 +199,7 @@ print(output_text)
 
 - **Images**: Please download the CXR images following the instructions of the used datasets (cf. paper).
 - **Texts**: 
-  - [📊 CheXinstruct-v2](https://drive.google.com/drive/folders/1VhL5nqPq5KfzGBecTbgSJs4MvwzTiy7E?usp=sharing)
+  - [📊 CheXInstruct-v2](https://drive.google.com/drive/folders/1VhL5nqPq5KfzGBecTbgSJs4MvwzTiy7E?usp=sharing)
   - [🧠 CheXReason](https://drive.google.com/drive/folders/1WKvaO4UTztiltfppHisTIVFWDj_oSaGv?usp=sharing)
 
 ## 🏋️ Train
